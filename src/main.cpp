@@ -12,7 +12,7 @@
 
 #define WRIST_ROTATION_CS_PIN 8
 #define WRIST_ROTATION_STEP_PIN 7
-#define WRIST_ROTATION_CURRENT 400
+#define WRIST_ROTATION_CURRENT 2000
 
 #define ELBOW_CS_PIN 6
 #define ELBOW_STEP_PIN 5
@@ -83,11 +83,13 @@ void setup_driver(TMC5160Stepper* driver, int current) {
     driver->en_pwm_mode(true);
     driver->pwm_autoscale(true);
 	driver->AMAX(500);
-	driver->VMAX(200000);
+    driver->VSTART(10);
+	driver->VMAX(2000);
 	driver->DMAX(700);
 	driver->VSTOP(10);
-	driver->RAMPMODE(0);
+	driver->RAMPMODE(1);
 	driver->XTARGET(-51200);
+    driver->shaft(true);
 }
 
 #define MOTION_TEST
@@ -304,7 +306,7 @@ void setup()
 void loop()
 {
 // SPI only
-    delay(1000);
+    // delay(1000);
 
      auto xactual = drivers[WRIST_ROTATION]->XACTUAL();
      auto xtarget = drivers[WRIST_ROTATION]->XTARGET();
