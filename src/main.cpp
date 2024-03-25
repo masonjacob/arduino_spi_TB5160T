@@ -18,6 +18,7 @@
 #define ELBOW_STEP_PIN 5
 #define ELBOW_CURRENT 1680
 
+
 // #define BASE_ROTATION_CS_PIN 10
 // #define BASE_ROTATION_STEP_PIN 9
 // #define BASE_ROTATION_CURRENT 2000
@@ -62,7 +63,7 @@ int currents[3] = {WRIST_CURRENT, WRIST_ROTATION_CURRENT, ELBOW_CURRENT};
 
 void create_drivers() {
     for (int i = 0; i < sizeof(drivers)/sizeof(TMC5160Stepper*); i++) {
-        drivers[i] = new TMC5160Stepper(pins[i][0], R_SENSE, MOSI_PIN, MISO_PIN, SCK_PIN);
+        drivers[i] = new TMC5160Stepper(pins[i][0], R_SENSE);
         setup_driver_pins(pins[i]);
         setup_driver(drivers[i], currents[i]);
     }
@@ -82,17 +83,27 @@ void setup_driver(TMC5160Stepper* driver, int current) {
     driver->rms_current(current); //400mA RMS
     driver->en_pwm_mode(true);
     driver->pwm_autoscale(true);
-	driver->AMAX(500);
-    driver->VSTART(10);
-	driver->VMAX(2000);
-	driver->DMAX(700);
-	driver->VSTOP(10);
-	driver->RAMPMODE(1);
-	driver->XTARGET(-51200);
+	// driver->AMAX(500);
+    // driver->VSTART(10);
+	// driver->VMAX(2000);
+	// driver->DMAX(700);
+	// driver->VSTOP(10);
+	// driver->RAMPMODE(1);
+	// driver->XTARGET(-51200);
     driver->shaft(true);
 }
 
-#define MOTION_TEST
+void driver_status(TMC5160Stepper* driver) {
+    if(driver->diag0_error()){ Serial.println(F("DIAG0 error"));    }
+    if(driver->ot())         { Serial.println(F("Overtemp."));      }
+    if(driver->otpw())       { Serial.println(F("Overtemp. PW"));   }
+    if(driver->s2ga())       { Serial.println(F("Short to Gnd A")); }
+    if(driver->s2gb())       { Serial.println(F("Short to Gnd B")); }
+    if(driver->ola())        { Serial.println(F("Open Load A"));    }
+    if(driver->olb())        { Serial.println(F("Open Load B"));    }
+}
+
+#define TMC5160_SPI_TEST
 
 #ifdef CALIBRATE_SPREADCYCLE
 // You can define starting values here:
@@ -266,21 +277,10 @@ void initPins() {
 void loop() {}
 #endif
 
-#ifdef MOTION_TEST
+#ifdef STEP_DIR_SPI_TEST
 
 bool dir1 = false;
 bool dir2 = false;
-
-
-void driver_status(TMC5160Stepper* driver) {
-    if(driver->diag0_error()){ Serial.println(F("DIAG0 error"));    }
-    if(driver->ot())         { Serial.println(F("Overtemp."));      }
-    if(driver->otpw())       { Serial.println(F("Overtemp. PW"));   }
-    if(driver->s2ga())       { Serial.println(F("Short to Gnd A")); }
-    if(driver->s2gb())       { Serial.println(F("Short to Gnd B")); }
-    if(driver->ola())        { Serial.println(F("Open Load A"));    }
-    if(driver->olb())        { Serial.println(F("Open Load B"));    }
-}
 
 void setup()
 {
@@ -305,8 +305,101 @@ void setup()
 
 void loop()
 {
-// SPI only
+/////////////////////////////////
+// Working SPI + STEP PIN TEST //
+/////////////////////////////////
+
+  static uint32_t timer_1=0;
+  static uint32_t timer_2=0;
+  uint32_t ms = millis();
+
+
+  if ((ms-timer_2) > 4000) {
     // delay(1000);
+    // timer_1 = ms;
+    timer_2 = ms;
+    // dir1 = !dir1;
+    dir2 = !dir2;
+    drivers[ELBOW]->shaft(dir2);
+    // drivers[WRIST]->shaft(dir1);
+    // drivers[WRIST_ROTATION]->shaft(dir1);
+  }
+
+  if((ms-timer_1) > 2000) //run every 1s
+  {
+    timer_1 = ms;
+    dir1 = !dir1;
+    drivers[WRIST]->shaft(dir1);
+    drivers[WRIST_ROTATION]->shaft(dir1);
+
+    driver_status(drivers[WRIST]);
+  }
+
+  if (digitalRead(END_EFFECTOR_SWITCH_PIN) == HIGH) {
+    end_effector.write(180);
+  } else {
+    end_effector.write(90);
+  }
+
+
+
+  //make steps
+  digitalWrite(pins[WRIST][STEP_PIN], HIGH);
+  digitalWrite(pins[WRIST_ROTATION][STEP_PIN], HIGH);
+  digitalWrite(pins[ELBOW][STEP_PIN], HIGH);
+
+  delayMicroseconds(250);
+  digitalWrite(pins[WRIST][STEP_PIN], LOW);
+
+  delayMicroseconds(250);
+  digitalWrite(pins[WRIST][STEP_PIN], HIGH);
+  digitalWrite(pins[WRIST_ROTATION][STEP_PIN], LOW);
+  digitalWrite(pins[ELBOW][STEP_PIN], LOW);
+
+  delayMicroseconds(250);
+  digitalWrite(pins[WRIST][STEP_PIN], LOW);
+
+  delayMicroseconds(250);
+}
+#endif
+
+#ifdef TMC_LIBRARY_SPI_TEST
+
+void setup()
+{
+  pinMode(MOSI_PIN, OUTPUT);
+  digitalWrite(MOSI_PIN, LOW);
+  pinMode(MISO_PIN, INPUT);
+  digitalWrite(MISO_PIN, HIGH);
+  pinMode(SCK_PIN, OUTPUT);
+  digitalWrite(SCK_PIN, LOW);
+
+  pinMode(END_EFFECTOR_SIGNAL_PIN, OUTPUT);
+  pinMode(END_EFFECTOR_SWITCH_PIN, INPUT);
+
+  //init serial port
+  Serial.begin(9600); //init serial port and set baudrate
+  while(!Serial); //wait for serial port to connect (needed for Leonardo only)
+  Serial.println("\nStart...");
+  
+  create_drivers();
+  for (int i = 0; i < sizeof(drivers)/sizeof(TMC5160Stepper*); i++) {
+    drivers[i]->AMAX(500);
+    drivers[i]->VSTART(10);
+	drivers[i]->VMAX(2000);
+	drivers[i]->DMAX(700);
+	drivers[i]->VSTOP(10);
+	drivers[i]->RAMPMODE(1);
+	drivers[i]->XTARGET(-51200);
+  }
+  end_effector.attach(END_EFFECTOR_SIGNAL_PIN);
+}
+
+void loop()
+{
+/////////////////////////////////
+// Previously Working Full SPI //
+/////////////////////////////////
 
      auto xactual = drivers[WRIST_ROTATION]->XACTUAL();
      auto xtarget = drivers[WRIST_ROTATION]->XTARGET();
@@ -322,66 +415,13 @@ void loop()
         {
          drivers[WRIST_ROTATION]->XTARGET(-xactual);
         }
-
-
-//   static uint32_t timer_1=0;
-//   static uint32_t timer_2=0;
-//   uint32_t ms = millis();
-
-
-//   if ((ms-timer_2) > 4000) {
-//     // delay(1000);
-//     // timer_1 = ms;
-//     timer_2 = ms;
-//     // dir1 = !dir1;
-//     dir2 = !dir2;
-//     drivers[ELBOW]->shaft(dir2);
-//     // drivers[WRIST]->shaft(dir1);
-//     // drivers[WRIST_ROTATION]->shaft(dir1);
-//   }
-
-//   if((ms-timer_1) > 2000) //run every 1s
-//   {
-//     timer_1 = ms;
-//     dir1 = !dir1;
-//     drivers[WRIST]->shaft(dir1);
-//     drivers[WRIST_ROTATION]->shaft(dir1);
-
-//     driver_status(drivers[WRIST]);
-//   }
-
-//   if (digitalRead(END_EFFECTOR_SWITCH_PIN) == HIGH) {
-//     end_effector.write(180);
-//   } else {
-//     end_effector.write(90);
-//   }
-
-
-
-//   //make steps
-//   digitalWrite(pins[WRIST][STEP_PIN], HIGH);
-//   digitalWrite(pins[WRIST_ROTATION][STEP_PIN], HIGH);
-//   digitalWrite(pins[ELBOW][STEP_PIN], HIGH);
-
-//   delayMicroseconds(250);
-//   digitalWrite(pins[WRIST][STEP_PIN], LOW);
-
-//   delayMicroseconds(250);
-//   digitalWrite(pins[WRIST][STEP_PIN], HIGH);
-//   digitalWrite(pins[WRIST_ROTATION][STEP_PIN], LOW);
-//   digitalWrite(pins[ELBOW][STEP_PIN], LOW);
-
-//   delayMicroseconds(250);
-//   digitalWrite(pins[WRIST][STEP_PIN], LOW);
-
-//   delayMicroseconds(250);
-  
 }
+
 #endif
 
-#ifdef SPI_TEST
+#ifdef TMC5160_SPI_TEST
 #include "TMC5160.h"
-TMC5160_SPI motor = TMC5160_SPI(SPI_CS); //Use default SPI peripheral and SPI settings.
+TMC5160_SPI motor = TMC5160_SPI(WRIST_ROTATION_CS_PIN); //Use default SPI peripheral and SPI settings.
 
 
 void setup()
@@ -389,14 +429,14 @@ void setup()
   // USB/debug serial coms
   Serial.begin(115200);
 
-  pinMode(SPI_DRV_ENN, OUTPUT);
-  digitalWrite(SPI_DRV_ENN, LOW);
-  pinMode(CLOCK, OUTPUT); 
-  digitalWrite(CLOCK, LOW);
-  pinMode(STEP, OUTPUT); 
-  digitalWrite(STEP, LOW);
-  pinMode(DIR, OUTPUT); 
-  digitalWrite(DIR, LOW); // Active low
+//   pinMode(SPI_DRV_ENN, OUTPUT);
+//   digitalWrite(SPI_DRV_ENN, LOW);
+//   pinMode(CLOCK, OUTPUT); 
+//   digitalWrite(CLOCK, LOW);
+//   pinMode(STEP, OUTPUT); 
+//   digitalWrite(STEP, LOW);
+//   pinMode(DIR, OUTPUT); 
+//   digitalWrite(DIR, LOW); // Active low
 
   // This sets the motor & tmc parameters /!\ run the configWizard for your tmc and motor for fine tuning !
   TMC5160::PowerStageParameters powerStageParams; // defaults.
