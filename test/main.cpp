@@ -103,7 +103,7 @@ void driver_status(TMC5160Stepper* driver) {
     if(driver->olb())        { Serial.println(F("Open Load B"));    }
 }
 
-#define TRINAMIC_EXAMPLE
+#define STEP_DIR_SPI_TEST
 
 #ifdef CALIBRATE_SPREADCYCLE
 // You can define starting values here:
